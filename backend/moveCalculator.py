@@ -15,7 +15,7 @@ class Diag:
     UpLeft      = (Dir.Up,      Dir.Left)
     DownLeft    = (Dir.Down,    Dir.Left)
 
-def validMoves(board: Board, square: str) -> dict:
+def validMoves(board: Board, square: str) -> list:
     piece = board.get_piece(square)
     x, y = to_python_indecies(square)
     return piece_function[piece.name](board, x, y, piece)
@@ -39,9 +39,9 @@ def can_take(x: int, y: int, dir: Dir | tuple, piece: Piece, possible_moves: lis
     new_x, new_y = move(x,y, dir)
     if not in_boundaries(new_x, new_y):
         return False
-    can_take = board.has_piece((new_x, new_y)) and are_hostile(piece, board.get_piece(new_x, new_y))
+    can_take = board.has_piece((new_x, new_y)) and are_hostile(piece, board.get_piece((new_x, new_y)))
     if can_take:
-        possible_moves.append(new_x, new_y)
+        possible_moves.append((new_x, new_y))
     return can_take
         
 def can_go(x: int, y: int, dir: Dir | tuple, piece: Piece, possible_moves: list, board: Board) -> bool:
@@ -52,7 +52,12 @@ def can_go(x: int, y: int, dir: Dir | tuple, piece: Piece, possible_moves: list,
     return can_go
     
 def _rook(board: Board, x: int, y: int, piece: Piece) -> None:
-    pass    
+    possible_moves = list()
+    if not can_take(x,y, Dir.Up, piece, possible_moves, board):
+        if not can_go(x,y,Dir.Up, piece, possible_moves, board):
+            pass
+        
+
 def _bishop(board: Board, x: int, y: int, piece: Piece) -> None:
     pass    
 def _knight(board: Board, x: int, y: int, piece: Piece) -> None:

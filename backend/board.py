@@ -1,6 +1,7 @@
 from .square import Square
 from .piece import Piece
 from .util import to_python_indecies
+import os
 
 DIMENSION = 8
 
@@ -16,7 +17,11 @@ class Board:
         pieces = self._create_pieces()
         self._place_pieces(pieces)
         
-    def show_board(self, highlights: list[tuple] = None) -> None:
+    def cls(self) -> None:
+        os.system("cls")
+        
+    def show_board(self, highlights: list[tuple] | None = None) -> None:
+        self.cls()
         for y, y_line in enumerate(reversed(self.squares)):
             y = len(self.squares) - y
             print_line = f"{y}    "
@@ -35,14 +40,27 @@ class Board:
         color = "[31m" # red
         suffix = "\033[0m"
         return f"{prefix}{color}{line}{suffix}"
+    
+    def move_to(self, start_square_name: str, target_square_name: str) -> None | Piece:
+        start_square = self._get_square(start_square_name)
+        piece = start_square.remove_piece()
+        target_square = self._get_square(target_square_name)
+        taken_piece = target_square.place_piece(piece)
+        return taken_piece
         
-        
-    def get_piece(self, square: str) -> Piece:
-        if self.has_piece(square):
+    def get_piece(self, square: str | tuple) -> Piece:
+        if isinstance(square, str):
             x, y = to_python_indecies(square)
+        else:
+            x,y = square
+        if self.has_piece((x,y)):
             return self.squares[y][x].content
         else:
             raise Exception(f"No piece on square {square}")
+
+    def _get_square(self, square: str) -> Square:
+        x, y = to_python_indecies(square)
+        return self.squares[y][x]
 
     def has_piece(self, square: str | tuple[int, int]) -> bool:
         if isinstance(square, str):
@@ -59,7 +77,7 @@ class Board:
                 square.set_pos(x,y)
                 self.squares[y].append(square)        
                 
-    def _create_pieces(self) -> None:
+    def _create_pieces(self) -> list:
         pieces = list()
         for color in [Piece.Color.White, Piece.Color.Black]:
             pieces.append(Piece(Piece.Figure.Rook, color))

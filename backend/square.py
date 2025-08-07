@@ -3,12 +3,12 @@ from .piece import Piece
 
 class Square:
     def __init__(self) -> None:
-        self._x = None
-        self._y = None
-        self._name = None
-        self._content = None
+        self._x: int 
+        self._y: int 
+        self._name: tuple[str]
+        self._content: Piece = None
     
-    def __str__(self) -> None | Piece:
+    def __str__(self) -> str:
         return str(f"{self._name} : {self._content}")
     
     def set_pos(self, x : int, y: int) -> None:
@@ -19,25 +19,27 @@ class Square:
         else:
             raise Exception("Coordinates have no valid value")
     
-    def pos(self, chess_notation: bool = False) -> tuple[int, int]:
+    def pos(self, chess_notation: bool = False) -> tuple:
         if chess_notation:
             return to_chess_notation((self._x, self._y))
         else:
             return self._x, self._y
     
     @property
-    def name(self) -> tuple[str, str]:
+    def name(self) -> tuple[str]:
         return self._name
     
     @property
-    def content(self) -> str:
+    def content(self) -> Piece | str:
         return self._content if self._content else "."
     
-    def place_piece(self, piece: Piece) -> None:
+    def place_piece(self, piece: Piece) -> None | Piece:
+        taken_piece = None
         if self._content:
-            raise Exception(f"Can not place piece {piece} on this square: occupied already | use function: take_piece()") 
-        else:
-            self._content = piece
+            taken_piece = self._content
+
+        self._content = piece
+        return taken_piece
         
     def take_piece(self, piece: Piece) -> None:
         if self._content:
@@ -45,9 +47,11 @@ class Square:
         else:
             raise Exception("Can not take a piece from this square: no piece on square | use function: place_piece()")
     
-    def remove_piece(self) -> None:
+    def remove_piece(self) -> Piece:
         if self._content:
+            content = self._content
             self._content = None
+            return content
         else:
             raise Exception("Can not remove piece from this square: no piece on square")
     

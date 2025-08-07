@@ -1,5 +1,3 @@
-
-
 class Piece:
     class Color:
         White = "White"
@@ -13,7 +11,7 @@ class Piece:
         Rook    = "r"
         Pawn    = "p"
 
-    def __init__(self, name: Figure, color: Color):
+    def __init__(self, name: str, color: str):
         self.name = name
         self.color = color
     
