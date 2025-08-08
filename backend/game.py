@@ -1,18 +1,24 @@
 from datetime import datetime
 from .board import Board
 from .piece import Piece
-from .moveCalculator import validMoves
-from .util import X_LINE, to_python_indecies
+from .moveCalculator import MoveCalculator
+from .util import X_LINE, to_python_indecies, PlayerColor, PGN_win
 from .san import San
 import os
 
 class Game:
     def __init__(self) -> None:
-        self.board = Board()
+        self.setup_pgn_info()
+        self.moves: list[str]   = list()
+        self.board: Board       = Board()
+        self.San: San           = San()
+        self.move_calculator    = MoveCalculator(self.board)
+        
+    def setup_pgn_info(self) -> None:
         self.en_passant = "-"
         self.half_turns_since_event = 0 # pawn moved or piece taken
         self.turn = 1
-        self.color_to_move = "w"
+        self.color_to_move = PlayerColor.White
         self.castings_still_possible = "KQkq"
         self.date = datetime.now().isoformat()
         self.tournament = "None"
@@ -20,9 +26,7 @@ class Game:
         self.round = 1
         self.white_playername = "Jo"
         self.black_playername = "Auch Jo"
-        self.result = "0-0" # 1-0 = white won, 0-1 = black won, 1/2-1/2 = remis, * inclomplete
-        self.moves: list[str] = list()
-        self.San = San()
+        self.result = "*" # 1-0 = white won, 0-1 = black won, 1/2-1/2 = remis, * inclomplete
     
     @property
     def color(self) -> str:
@@ -49,12 +53,10 @@ class Game:
                 self.end_turn()
     
     def play_turn(self) -> bool:
-        
         self.board.show_board()
         square_name = self.select_piece()
-        valid_moves = validMoves(self.board, square_name)
-        
-        self.board.show_board(valid_moves)
+        valid_moves = self.move_calculator.validMoves(square_name)        
+        self.board.show_board(valid_moves, square_name)
         target_square_name = self.select_move(valid_moves)
         if target_square_name is None:
             return False
@@ -62,15 +64,27 @@ class Game:
         piece_name = self.board.get_piece(target_square_name)
         # TODO: check en passant, check/checkmate, conversion
         self.board.show_board()
-        self.San.add(piece_name, square_name, target_square_name, self.board, taken_piece)
+        check_mate = self.is_checkmate()
+            
+        self.San.add(piece_name, square_name, target_square_name, self.board, taken_piece, check_mate=check_mate)
         return True
     
+    def is_checkmate(self) -> bool:
+        if self.color_to_move is PlayerColor.White:
+            king = self.board.kings[1]
+        else:
+            king = self.board.kings[0]
+        return not self.move_calculator.validMoves(piece=king) and self.move_calculator.king_is_not_safe()
+            
+    def end_game(self) -> None:
+        self.result = PGN_win[self.color_to_move]
+    
     def end_turn(self) -> None:
-        if self.color_to_move == "w":
-            self.color_to_move = "b"
+        if self.color_to_move == PlayerColor.White:
+            self.color_to_move = PlayerColor.Black
         
         else:
-            self.color_to_move = "w"
+            self.color_to_move = PlayerColor.White
             self.moves.append(self.San.get_turn(self.turn))
             self.turn += 1
 
@@ -99,7 +113,7 @@ class Game:
             if not self.board.has_piece(square):
                 print(f"square {square} has no piece")
                 continue
-            if not self.board.get_piece(square).is_color(self.color):
+            if not self.board.get_piece(square).is_color(self.color_to_move):
                 print("Piece is not your color")
                 continue
             square = square[0].capitalize() + square[1]

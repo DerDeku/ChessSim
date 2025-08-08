@@ -1,3 +1,5 @@
+from enum import Enum
+
 from .board import Board
 from .piece import Piece
 from .util import to_python_indecies, X_LINE
@@ -8,105 +10,217 @@ class Dir:
     Down = 1
     Right = 2
     Left = 3
+    Dirs = [Up, Down, Right, Left]
 
 class Diag:
     UpRight     = (Dir.Up,      Dir.Right)
     DownRight   = (Dir.Down,    Dir.Right)
     UpLeft      = (Dir.Up,      Dir.Left)
     DownLeft    = (Dir.Down,    Dir.Left)
+    Diags       = [UpRight, DownRight, UpLeft, DownLeft]
+    
+Knight_Moves = [(Dir.Up, Diag.UpRight),(Dir.Up, Diag.UpLeft),(Dir.Right, Diag.UpRight),(Dir.Right, Diag.DownRight),(Dir.Down, Diag.DownRight),(Dir.Down, Diag.DownLeft),(Dir.Left, Diag.UpLeft),(Dir.Left, Diag.DownLeft)]
 
-def validMoves(board: Board, square: str) -> list:
-    piece = board.get_piece(square)
-    x, y = to_python_indecies(square)
-    return piece_function[piece.name](board, x, y, piece)
+class MoveCalculator:
+    def __init__(self, board: Board):
+        self.board = board
+        self.piece_function = {
+        Piece.Figure.Pawn : self._pawn,
+        Piece.Figure.Rook : self._rook,
+        Piece.Figure.Bishop : self._bishop,
+        Piece.Figure.Knight : self._knight,
+        Piece.Figure.King : self._king,
+        Piece.Figure.Queen : self._queen    
+        }
     
-def _pawn(board: Board, x: int, y: int, piece: Piece) -> None:
-    forward = get_forward_for_piece(piece)
-    possible_moves = list()
+    def validMoves(self, square: str | None = None, piece: Piece | None = None) -> list:
+        if square and not piece:
+            piece = self.board.get_piece(square)
+        return self.piece_function[piece.name](piece)
+
+    def _pawn(self, piece: Piece) -> None:
+        self.possible_moves = list()
+        forward = self._get_forward_for_piece(piece)
+        self._can_go(piece.pos, forward)
+
+        if self._is_pawn_home(piece):
+            new_pos = self._move(piece.pos, forward)
+            self._can_go(new_pos, forward)
+
+        self._can_take((forward, Dir.Right), piece)
+        self._can_take((forward, Dir.Left), piece)
+        return self.possible_moves
+
+    def _rook(self, piece: Piece) -> None:
+        self.possible_moves = list()
+        self._find_end(piece.pos, piece, Dir.Up)
+        self._find_end(piece.pos, piece, Dir.Down)
+        self._find_end(piece.pos, piece, Dir.Left)
+        self._find_end(piece.pos, piece, Dir.Right)
+        return self.possible_moves
+
+    def _bishop(self, piece: Piece) -> None:
+        self.possible_moves = list()
+        self._find_end(piece.pos, piece, Diag.UpRight)
+        self._find_end(piece.pos, piece, Diag.DownRight)
+        self._find_end(piece.pos, piece, Diag.DownLeft)
+        self._find_end(piece.pos, piece, Diag.UpLeft)
+        return self.possible_moves
+
+    def _knight(self, piece: Piece) -> None:
+        self.possible_moves = list()
+        self._knight_move(piece, (Dir.Up, Diag.UpRight))
+        self._knight_move(piece, (Dir.Up, Diag.UpLeft))
+        self._knight_move(piece, (Dir.Right, Diag.UpRight))
+        self._knight_move(piece, (Dir.Right, Diag.DownRight))
+        self._knight_move(piece, (Dir.Down, Diag.DownRight))
+        self._knight_move(piece, (Dir.Down, Diag.DownLeft))
+        self._knight_move(piece, (Dir.Left, Diag.UpLeft))
+        self._knight_move(piece, (Dir.Left, Diag.DownLeft))
+        return self.possible_moves
     
-    can_go(x, y, forward, piece, possible_moves, board)
+    def _king(self, piece: Piece) -> None:
+        self.possible_moves = list()
+        self._king_move(piece, Dir.Up)
+        self._king_move(piece, Dir.Down)
+        self._king_move(piece, Dir.Left)
+        self._king_move(piece, Dir.Right)
+        self._king_move(piece, Diag.UpRight)
+        self._king_move(piece, Diag.DownRight)
+        self._king_move(piece, Diag.DownLeft)
+        self._king_move(piece, Diag.UpLeft)
+        return self.possible_moves 
+    
+    def _queen(self, piece: Piece) -> None:
+        self.possible_moves = list()
+        self._find_end(piece.pos, piece, Dir.Up)
+        self._find_end(piece.pos, piece, Dir.Down)
+        self._find_end(piece.pos, piece, Dir.Left)
+        self._find_end(piece.pos, piece, Dir.Right)
+        self._find_end(piece.pos, piece, Diag.UpRight)
+        self._find_end(piece.pos, piece, Diag.DownRight)
+        self._find_end(piece.pos, piece, Diag.DownLeft)
+        self._find_end(piece.pos, piece, Diag.UpLeft)
+        return self.possible_moves
+    
+    def _king_move(self, piece: Piece, dir: int | tuple) -> None:
+            new_pos = self._move(piece.pos, dir)
+            enemy_king_pos = self.board.get_enemys_king_position(piece.color)
+            if self.board.kings_to_close(new_pos, enemy_king_pos):
+                return
+            if self.king_is_not_safe(new_pos, piece):
+                return
+            if not self._in_boundaries(new_pos):
+                return
+            if self.board.has_piece(new_pos):
+                if self._are_hostile(piece, self.board.get_piece(new_pos)):
+                    self.possible_moves.append(new_pos)
+                return
+            self.possible_moves.append(new_pos)
+            
+    def king_is_not_safe(self, pos: tuple, piece: Piece) -> bool:
+        if piece.name != Piece.Figure.King:
+            raise Exception(f"Piece {piece.name} is not a King as expected")
         
-    if is_pawn_home(y, piece):
-        new_x, new_y = move(x, y, forward)
-        can_go(new_x, new_y, forward, piece, possible_moves, board)
+        # TODO: ROOK, BISHOP, QUEEN
+        for dir in Dir.Dirs:
+            pieces = [Piece.Figure.Queen, Piece.Figure.Rook]
+            new_piece = self.find_piece_in_dir(pos, dir)
+            if new_piece.color != piece.color and new_piece.name in pieces:
+                return True
+
+        for diag in Diag.Diags:
+            pieces = [Piece.Figure.Queen, Piece.Figure.Bishop]
+            new_piece = self.find_piece_in_dir(pos, diag)
+            if new_piece.color != piece.color and new_piece.name in pieces:
+                return True
         
-    can_take(x,y, (forward, Dir.Right), piece, possible_moves, board)
-    can_take(x,y, (forward, Dir.Left), piece, possible_moves, board)
-
-    return possible_moves
-    
-def can_take(x: int, y: int, dir: Dir | tuple, piece: Piece, possible_moves: list, board: Board) -> bool:
-    new_x, new_y = move(x,y, dir)
-    if not in_boundaries(new_x, new_y):
-        return False
-    can_take = board.has_piece((new_x, new_y)) and are_hostile(piece, board.get_piece((new_x, new_y)))
-    if can_take:
-        possible_moves.append((new_x, new_y))
-    return can_take
+        # TODO: PAWN
+        # TODO: KNIGHT
         
-def can_go(x: int, y: int, dir: Dir | tuple, piece: Piece, possible_moves: list, board: Board) -> bool:
-    new_x, new_y = move(x,y,dir)
-    can_go = in_boundaries(new_x, new_y) and not board.has_piece((new_x, new_y))
-    if can_go:
-        possible_moves.append((new_x, new_y))
-    return can_go
-    
-def _rook(board: Board, x: int, y: int, piece: Piece) -> None:
-    possible_moves = list()
-    if not can_take(x,y, Dir.Up, piece, possible_moves, board):
-        if not can_go(x,y,Dir.Up, piece, possible_moves, board):
-            pass
+        for dirs in Knight_Moves:
+            pieces = [Piece.Figure.Queen, Piece.Figure.Bishop]
+            new_piece = self.find_piece_in_dir(pos, diag)
+            if new_piece.color != piece.color and new_piece.name in pieces:
+                return True
+
+    def find_piece_in_dir(self, pos: tuple, dir: Dir | tuple, repeat: bool = True) -> Piece | None:
+        while True:
+            new_pos = self._move(pos, dir)
+            if not self._in_boundaries(new_pos):
+                return None
+            if not self.board.has_piece(new_pos):
+                if repeat:
+                    continue
+                else:
+                    return None
+            piece = self.board.get_piece(new_pos)
+            return piece
+            
+            
+
+    def _knight_move(self, piece: Piece, dir: tuple):
+        if self._can_go(piece.pos, dir):
+            return
+        if self._can_take(piece.pos, dir, piece):
+            return
         
+    def _find_end(self, pos: tuple, piece: Piece, dir: int | tuple) -> None:
+        while True:
+            new_pos = self._move(pos, dir)
+            if not self._in_boundaries(new_pos):
+                return
+            if self.board.has_piece(new_pos):
+                if self._are_hostile(piece, self.board.get_piece(new_pos)):
+                    self.possible_moves.append(new_pos)
+                return
+            self.possible_moves.append(new_pos)
+            pos = new_pos
 
-def _bishop(board: Board, x: int, y: int, piece: Piece) -> None:
-    pass    
-def _knight(board: Board, x: int, y: int, piece: Piece) -> None:
-    pass    
-def _king(board: Board, x: int, y: int, piece: Piece) -> None:
-    pass    
-def _queen(board: Board, x: int, y: int, piece: Piece) -> None:
-    pass    
+    def _move(self, pos: tuple, dir: int | tuple) -> tuple:
+        if isinstance(dir, int):
+            if dir == Dir.Up:
+                return (pos[0], pos[1] + 1)
+            elif dir == Dir.Down:
+                return (pos[0], pos[1]-1)
+            elif dir == Dir.Right:
+                return (pos[0]+1, pos[1])
+            elif dir == Dir.Left:
+                return (pos[0]-1, pos[1])
+        if isinstance(dir, tuple):
+            for d in dir:
+                pos = self._move(pos,d)
+            return pos
 
-def move(x: int, y: int, dir: int | tuple) -> str:
-    if isinstance(dir, int):
-        if dir == Dir.Up:
-            return x, y+1
-        elif dir == Dir.Down:
-            return x, y-1
-        elif dir == Dir.Right:
-            return x+1, y
-        elif dir == Dir.Left:
-            return x-1, y
-    if isinstance(dir, tuple):
-        for d in dir:
-            x, y = move(x,y,d)
-        return x,y
-    
-def in_boundaries(value_1: int, value_2: int = None) -> bool:
-    if value_2 is None:
-        return 0 <= value_1 and 9 > value_1
-    else:
-        return 0 <= value_1 and 9 > value_1 and 0 <= value_2 and 9 > value_2
-    
-def are_hostile(piece_1: Piece, piece_2: Piece) -> bool:
-    return piece_1.color != piece_2.color
+    def _in_boundaries(self, pos: tuple) -> bool:
+        return 0 <= pos[0] < 8 and 0 <= pos[1] < 8
 
-def get_forward_for_piece(piece: Piece) -> Dir:
-    if piece.color == Piece.Color.White:
-        return Dir.Up
-    elif piece.color == Piece.Color.Black:
-        return Dir.Down
-    
-def is_pawn_home(y: int, piece: Piece) -> bool:
-    if piece.name != Piece.Figure.Pawn:
-        raise Exception("You checked if pawn is home, but piece is not a pawn")
-    return piece.color == Piece.Color.White and y == 1 or piece.color == Piece.Color.Black and y == 6
+    def _are_hostile(self, piece_1: Piece, piece_2: Piece) -> bool:
+        return piece_1.color != piece_2.color
 
-piece_function = {
-    Piece.Figure.Pawn : _pawn,
-    Piece.Figure.Rook : _rook,
-    Piece.Figure.Bishop: _bishop,
-    Piece.Figure.Knight: _knight,
-    Piece.Figure.King : _king,
-    Piece.Figure.Queen : _queen    
-}
+    def _get_forward_for_piece(self, piece: Piece) -> Dir:
+        if piece.color == Piece.Color.White:
+            return Dir.Up
+        elif piece.color == Piece.Color.Black:
+            return Dir.Down
+
+    def _is_pawn_home(self, y: int, piece: Piece) -> bool:
+        if piece.name != Piece.Figure.Pawn:
+            raise Exception("You checked if pawn is home, but piece is not a pawn")
+        return piece.color == Piece.Color.White and y == 1 or piece.color == Piece.Color.Black and y == 6
+
+    def _can_take(self, dir: Dir | tuple, piece: Piece) -> bool:
+        new_pos = self._move(piece.pos, dir)
+        if not self._in_boundaries(new_pos):
+            return False
+        can_take = self.board.has_piece(new_pos) and self._are_hostile(piece, self.board.get_piece(new_pos))
+        if can_take:
+            self.possible_moves.append(new_pos)
+        return can_take
+
+    def _can_go(self, pos: tuple, dir: Dir | tuple) -> bool:
+        new_pos = self._move(pos, dir)
+        can_go = self._in_boundaries(new_pos) and not self.board.has_piece(new_pos)
+        if can_go:
+            self.possible_moves.append(new_pos)
+        return can_go

@@ -39,6 +39,7 @@ class Square:
             taken_piece = self._content
 
         self._content = piece
+        piece.set_pos(self.pos())
         return taken_piece
         
     def take_piece(self, piece: Piece) -> None:
