@@ -1,6 +1,5 @@
-from .board import Board
-from .piece import Piece
-from .util import to_python_indecies, to_chess_notation, X_LINE
+from .chess import Board
+from .chess import Piece
 
 class San:
     def __init__(self):

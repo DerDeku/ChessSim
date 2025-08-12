@@ -1,5 +1,4 @@
-from .game import Game
-
+from .chess.game import Game
 
 def main() -> None:
     run_game()
