@@ -8,7 +8,7 @@ from ..moveCalculation.moveCalculator import MoveCalculator
 from ..san import San
 from ..ai.bruteForce.bruteForce import BruteForce
 
-PVP = False
+PVP = True
 
 class Game:
     def __init__(self) -> None:

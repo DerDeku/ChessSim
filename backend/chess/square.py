@@ -33,13 +33,14 @@ class Square:
     def content(self) -> Piece | str:
         return self._content if self._content else "."
     
-    def place_piece(self, piece: Piece) -> None | Piece:
+    def place_piece(self, piece: Piece | None) -> None | Piece:
         taken_piece = None
         if self._content:
             taken_piece = self._content
 
-        self._content = piece
-        piece.set_pos(self.pos())
+        if piece:
+            self._content = piece
+            piece.set_pos(self.pos())
         return taken_piece
         
     def take_piece(self, piece: Piece) -> None:
@@ -48,12 +49,10 @@ class Square:
         else:
             raise Exception("Can not take a piece from this square: no piece on square | use function: place_piece()")
     
-    def remove_piece(self) -> Piece:
-        if self._content:
-            content = self._content
-            self._content = None
-            return content
-        else:
-            raise Exception("Can not remove piece from this square: no piece on square")
+    def remove_piece(self) -> Piece | None:
+        content = self._content
+        self._content = None
+        return content
+        
     
         

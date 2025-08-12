@@ -30,6 +30,9 @@ class MoveCalculator:
         Piece.Figure.King : self._king,
         Piece.Figure.Queen : self._queen
         }
+
+    def use_board(self, board: Board) -> None:
+        self.board = board
     
     def validMoves(self, square: str | None = None, piece: Piece | None = None) -> list:
         if square and not piece:
