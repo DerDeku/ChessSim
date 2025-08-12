@@ -1,1 +1,7 @@
 *.pyc
+backend/__pycache__/board.cpython-312.pyc
+backend/__pycache__/game.cpython-312.pyc
+backend/__pycache__/moveCalculator.cpython-312.pyc
+backend/__pycache__/piece.cpython-312.pyc
+backend/__pycache__/square.cpython-312.pyc
+backend/__pycache__/util.cpython-312.pyc
