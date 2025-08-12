@@ -46,10 +46,10 @@ class Board:
         
         return f" {prefix}{color}{line}{suffix} "
     
-    def move_to(self, start_square_name: str, target_square_name: str) -> None | Piece:
-        start_square = self._get_square(start_square_name)
+    def move_to(self, start_square_pos: str | tuple, target_square_pos: str | tuple) -> None | Piece:
+        start_square = self._get_square(start_square_pos)
         piece = start_square.remove_piece()
-        target_square = self._get_square(target_square_name)
+        target_square = self._get_square(target_square_pos)
         taken_piece = target_square.place_piece(piece)
         return taken_piece
         
@@ -69,8 +69,14 @@ class Board:
     def get_enemys_king_position(self, own_color: str) -> tuple:
         return self.kings[1].pos if own_color == PlayerColor.White else self.kings[0].pos
     
-    def _get_square(self, square: str) -> Square:
-        x, y = to_python_indecies(square)
+    def get_king_from_color(self, color: str) -> Piece:
+        return self.kings[0] if color == PlayerColor.White else self.kings[1] 
+    
+    def _get_square(self, square: str | tuple) -> Square:
+        if isinstance(square, str):
+            x, y = to_python_indecies(square)
+        elif isinstance(square, tuple):
+            x, y = square
         return self.squares[y][x]
 
     def has_piece(self, square: str | tuple[int, int]) -> bool:

@@ -13,6 +13,8 @@ class Game:
         self.board: Board       = Board()
         self.San: San           = San()
         self.move_calculator    = MoveCalculator(self.board)
+        self.checkmate          = False
+        self.check              = False
         
     def setup_pgn_info(self) -> None:
         self.en_passant = "-"
@@ -50,7 +52,11 @@ class Game:
         self.board.setup_board()
         while True:
             if self.play_turn():
-                self.end_turn()
+                if self.checkmate:
+                    self.end_game()
+                    break
+                else:
+                    self.end_turn()
     
     def play_turn(self) -> bool:
         self.board.show_board()
@@ -62,22 +68,32 @@ class Game:
             return False
         taken_piece = self.board.move_to(square_name, target_square_name)
         piece_name = self.board.get_piece(target_square_name)
-        # TODO: check en passant, check/checkmate, conversion
         self.board.show_board()
-        check_mate = self.is_checkmate()
+        self.check = self.is_check()
+        # TODO: check en passant, checkmate, conversion
             
-        self.San.add(piece_name, square_name, target_square_name, self.board, taken_piece, check_mate=check_mate)
+        self.San.add(piece_name, square_name, target_square_name, self.board, taken_piece, check=self.check, check_mate=self.checkmate)
         return True
     
-    def is_checkmate(self) -> bool:
+    def is_check(self) -> bool:
         if self.color_to_move is PlayerColor.White:
             king = self.board.kings[1]
         else:
             king = self.board.kings[0]
-        return not self.move_calculator.validMoves(piece=king) and self.move_calculator.king_is_not_safe()
+        return self.move_calculator.king_under_attack(king.pos, king)
+
+    def can_king_move(self) -> bool:
+        if self.color_to_move is PlayerColor.White:
+            king = self.board.kings[1]
+        else:
+            king = self.board.kings[0]
+        return self.move_calculator.validMoves(piece=king)
             
     def end_game(self) -> None:
         self.result = PGN_win[self.color_to_move]
+        os.system("cls")
+        self.board.show_board()
+        print("Checkmate - " + self.color_to_move + " won")
     
     def end_turn(self) -> None:
         if self.color_to_move == PlayerColor.White:
@@ -104,7 +120,10 @@ class Game:
             return move_to
 
     def select_piece(self) -> None:
-        print(f"-- {self.color}'s move --\n")
+        line = f"-- {self.color}'s move --"
+        if self.check:
+            line += " CHECK"
+        print(line)
         print("select piece to move")
         while True:
             square = input()
