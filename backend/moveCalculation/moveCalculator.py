@@ -21,6 +21,7 @@ Knight_Moves = [(Dir.Up, Diag.UpRight),(Dir.Up, Diag.UpLeft),(Dir.Right, Diag.Up
 class MoveCalculator:
     def __init__(self, board: Board):
         self.color_to_move = None
+        self.possible_moves: list[tuple[int]] = list()
         self.board = board
         self.piece_function = {
         Piece.Figure.Pawn : self._pawn,
@@ -30,11 +31,28 @@ class MoveCalculator:
         Piece.Figure.King : self._king,
         Piece.Figure.Queen : self._queen
         }
+        self.calculated_moves: dict[Piece, list[tuple[int]]] = dict()
 
     def use_board(self, board: Board) -> None:
         self.board = board
     
-    def validMoves(self, square: str | None = None, piece: Piece | None = None) -> list:
+    def calc_all_valid_moves(self, pieces: list[Piece]) -> bool:
+        """Calculates all possible moves and stores them in a dict. Returns False if no possible moves are allowed"""
+        move_possible = False
+        self.calculated_moves = dict()
+        for piece in pieces:
+            if self._validMoves(piece=piece):
+                move_possible = True
+
+            self.calculated_moves.setdefault(piece, self.possible_moves.copy())
+        return move_possible
+    
+    def get_possible_moves(self, square: str | None = None, piece: Piece | None = None) -> list[tuple[int]]:
+        if square and not piece:
+            piece = self.board.get_piece(square)
+        return self.calculated_moves[piece]
+    
+    def _validMoves(self, square: str | None = None, piece: Piece | None = None) -> list[tuple[int]]:
         if square and not piece:
             piece = self.board.get_piece(square)
         self.color_to_move = piece.color
@@ -104,9 +122,9 @@ class MoveCalculator:
 
     def king_under_attack_if_piece_goes(self, new_pos: tuple, piece: Piece) -> bool:
         old_pos = piece.pos
-        old_piece = self.board.move_to(old_pos, new_pos)
+        old_piece = self.board.move_to(old_pos, new_pos, check_en_passant=False)
         check = self.king_under_attack()
-        self.board.move_to(new_pos, old_pos)
+        self.board.move_to(new_pos, old_pos, check_en_passant=False)
         if old_piece:
             self.board._get_square(new_pos).place_piece(old_piece)
         return check
@@ -213,9 +231,12 @@ class MoveCalculator:
 
     def _can_take(self, dir: Dir | tuple, piece: Piece) -> bool:
         new_pos = self._move(piece.pos, dir)
+        if self.board.en_passant == new_pos:
+            self.possible_moves.append(new_pos)
+            return True
         if not self._in_boundaries(new_pos):
             return False
-        can_take = self.board.has_piece(new_pos) and self._are_hostile(piece, self.board.get_piece(new_pos)) and self.king_under_attack_if_piece_goes(new_pos, piece)
+        can_take = self.board.has_piece(new_pos) and self._are_hostile(piece, self.board.get_piece(new_pos)) and not self.king_under_attack_if_piece_goes(new_pos, piece)
         if can_take:
             self.possible_moves.append(new_pos)
         return can_take

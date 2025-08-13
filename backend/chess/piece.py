@@ -1,7 +1,9 @@
+from . import util
+
 class Piece:
     class Color:
-        White = "w"
-        Black = "b"
+        White = util.PlayerColor.White
+        Black = util.PlayerColor.Black
 
     class Figure:
         King    = "k"
@@ -28,3 +30,6 @@ class Piece:
     
     def set_pos(self, pos: tuple) -> None:
         self._pos = pos
+    
+    def promote_to(self, figure: str) -> None:
+        self.name = figure

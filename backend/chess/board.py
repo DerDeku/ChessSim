@@ -12,6 +12,7 @@ class Board:
         self.squares: list[list[Square]] = list()
         self.kings: list[Piece] = list()
         self.pieces: dict[str, list[Piece]] = dict()
+        self.en_passant: tuple | None = None
     
     def get_copy(self) -> "Board":
         copy = Board()
@@ -56,13 +57,37 @@ class Board:
         
         return f" {prefix}{color}{line}{suffix} "
     
-    def move_to(self, start_square_pos: str | tuple, target_square_pos: str | tuple) -> None | Piece:
+    def move_to(self, start_square_pos: str | tuple, target_square_pos: str | tuple, check_en_passant: bool = True) -> None | Piece:
         start_square = self._get_square(start_square_pos)
         piece = start_square.remove_piece()
         target_square = self._get_square(target_square_pos)
         taken_piece = target_square.place_piece(piece)
+        if check_en_passant:
+            self.handle_en_passant(piece, start_square, target_square)
         return taken_piece
         
+    def handle_en_passant(self, piece: Piece, start_square: Square, target_square: Square) -> None:
+        # move_to always calls this function currently, also when checking for check multiple times.
+        # TODO: fix this
+        if piece.name != Piece.Figure.Pawn:
+            return
+        
+        pos_1 = start_square.pos()
+        pos_2 = target_square.pos()
+        if pos_2 == self.en_passant:
+            self.en_passant = None  
+            pos_2 = (pos_2[0],pos_2[1]-1) if pos_2[1] == 3 else (pos_2[0], pos_2[1]+1)
+            self.remove_piece_from_game(self.get_piece(pos_2))
+            
+        elif abs(pos_1[1] - pos_2[1]) > 1:
+            self.en_passant = (piece.pos[0], piece.pos[1]-1) if piece.color == Piece.Color.White else (piece.pos[0], piece.pos[1]+1)
+        else:
+            self.en_passant = None
+    
+    def remove_piece_from_game(self, piece: Piece) -> None:
+        self.pieces[piece.color].remove(piece)
+        self._get_square(piece.pos).remove_piece()
+    
     def get_piece(self, square: str | tuple) -> Piece:
         if isinstance(square, str):
             x, y = util.to_python_indecies(square)
@@ -72,6 +97,9 @@ class Board:
             return self.squares[y][x].content
         else:
             raise Exception(f"No piece on square {square}")
+        
+    def can_pawn_promote(self, piece: Piece) -> bool:
+        return piece.color == Piece.Color.White and piece.pos[1] == 7 or piece.color == Piece.Color.Black and piece.pos[1] == 0
         
     def kings_to_close(self, pos_k1: tuple, pos_k2: tuple) -> bool:
         return abs(pos_k1[0]-pos_k2[0]) < 2 and abs(pos_k1[1]-pos_k2[1]) < 2

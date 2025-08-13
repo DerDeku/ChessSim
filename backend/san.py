@@ -5,12 +5,12 @@ class San:
     def __init__(self):
         self.san = ""
 
-    def add(self, piece: Piece, start_pos: str, end_pos: str, board: Board, taken_piece_name: str | None = None, cconversion_name: str | None = None, check: bool = False, check_mate: bool = False):
+    def add(self, piece: Piece, start_pos: str, end_pos: str, board: Board, taken_piece_name: str | None = None, promotion_name: str | None = None, check: bool = False, check_mate: bool = False):
         figure_name = piece.name.capitalize()
         disambiguation = None
         takes = ""
         target_field = end_pos.lower()
-        conversion = ""
+        promotion = ""
         _check = ""
         _check_mate = ""
 
@@ -22,8 +22,8 @@ class San:
         if taken_piece_name:
             takes = "x"
         
-        if cconversion_name:
-            conversion = "=" + cconversion_name.capitalize()
+        if promotion_name:
+            promotion = "=" + promotion_name.capitalize()
         
         if check:
             _check = "+"
@@ -31,7 +31,7 @@ class San:
         elif check_mate:
             _check_mate = "#"
         
-        self.san += f" {figure_name}{disambiguation}{takes}{target_field}{conversion}{_check}{_check_mate}"
+        self.san += f" {figure_name}{disambiguation}{takes}{target_field}{promotion}{_check}{_check_mate}"
 
     def get_turn(self, turn: int) -> str:
         san = f"{turn}.{self.san}"

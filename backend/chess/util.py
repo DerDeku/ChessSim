@@ -3,6 +3,12 @@ X_LINE = ["A","B","C","D","E","F","G","H"]
 class PlayerColor:
     White = "w"
     Black = "b"
+    
+def full_color(color) -> str:
+    if color == PlayerColor.White:
+        return "White"
+    elif color == PlayerColor.Black:
+        return "Black"
 
 def to_chess_notation(coordinates: tuple) -> tuple:
     return X_LINE[coordinates[0]] + str(coordinates[1] + 1)

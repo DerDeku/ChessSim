@@ -37,7 +37,7 @@ class BruteForce(Ai):
                 self.moveCalculator.use_board(self.board)
                 
                 piece = self.board.pieces[color][variant[E_Variant.PieceIndex][is_enemy_turn]]
-                moves = self.moveCalculator.validMoves(piece=piece)
+                moves = self.moveCalculator._validMoves(piece=piece)
                 if not moves:
                     variant[E_Variant.PieceIndex][is_enemy_turn] += 1
                     continue

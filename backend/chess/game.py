@@ -19,6 +19,7 @@ class Game:
         self.San: San           = San()
         self.move_calculator    = MoveCalculator(self.board)
         self.ai                 = BruteForce(self.board)
+        self.checkmate          = False
         
     def setup_pgn_info(self) -> None:
         self.en_passant = "-"
@@ -55,52 +56,114 @@ class Game:
     def start(self) -> None:
         while True:
             if not PVP and self.color_to_move == util.PlayerColor.Black:
-                self.ai_turn()
-            if self.play_turn():
-                self.end_turn()
-    
+                if not self.ai_turn():
+                    return
+            if not self.play_turn():
+                continue
+            if not self.end_turn():
+                return
+        
     def ai_turn(self) -> None:
         move = self.ai.get_move()
         self.board.move_to(move[0], move[1])
-        self.end_turn()
+        return self.end_turn()
     
     def play_turn(self) -> bool:
         self.board.show_board()
-        square_name = self.select_piece()
-        valid_moves = self.move_calculator.validMoves(square_name)        
+        self.board.en_passant = None
+        can_move = self.move_calculator.calc_all_valid_moves(self.board.pieces[self.color_to_move])
+        if not can_move and self.is_check():
+            self.checkmate = True
+            return True
+    
+        square_name = self.input_piece()
+        valid_moves = self.move_calculator.get_possible_moves(square_name)        
         self.board.show_board(valid_moves, square_name)
-        target_square_name = self.select_move(valid_moves)
+        target_square_name = self.input_move(valid_moves)
         if target_square_name is None:
             return False
         taken_piece = self.board.move_to(square_name, target_square_name)
-        piece_name = self.board.get_piece(target_square_name)
-        # TODO: check en passant, check/checkmate, conversion
+        piece = self.board.get_piece(target_square_name)
+        if piece.name == Piece.Figure.Pawn:
+            self.handle_pawn(piece)
+        # TODO: check/checkmate
         self.board.show_board()
         check_mate = False #self.is_checkmate()
             
-        self.San.add(piece_name, square_name, target_square_name, self.board, taken_piece, check_mate=check_mate)
+        self.San.add(piece, square_name, target_square_name, self.board, taken_piece, check_mate=check_mate)
         return True
     
-    def is_checkmate(self) -> bool:
+    def handle_pawn(self, piece: Piece) -> None:
+        self.handle_en_passant()
+        self.handle_promotion(piece)
+        
+    def handle_en_passant(self) -> None:          
+        self.en_passant = util.to_chess_notation(self.board.en_passant) if self.board.en_passant else "-"
+        
+    def handle_promotion(self, pawn: Piece) -> None:
+        if self.board.can_pawn_promote(pawn):
+            self.board.show_board()
+            pawn.promote_to(self.input_promotion(pawn))
+    
+    def is_check(self) -> bool:
         if self.color_to_move is util.PlayerColor.White:
             king = self.board.kings[1]
         else:
             king = self.board.kings[0]
-        return not self.move_calculator.validMoves(piece=king) and self.move_calculator.king_is_not_safe()
+        return self.move_calculator.king_under_attack()
             
     def end_game(self) -> None:
         self.result = util.PGN_win[self.color_to_move]
+        self.board.show_board()
+        print(f"Checkmate - {util.full_color(self.color_to_move)} lost!")
     
     def end_turn(self) -> None:
-        if self.color_to_move == util.PlayerColor.White:
+        if self.checkmate:
+            return False
+            
+        elif self.color_to_move == util.PlayerColor.White:
             self.color_to_move = util.PlayerColor.Black
         
         else:
             self.color_to_move = util.PlayerColor.White
             self.moves.append(self.San.get_turn(self.turn))
             self.turn += 1
+        return True
 
-    def select_move(self, valid_moves: list[tuple]) -> str:
+    def input_promotion(self, piece: Piece) -> Piece.Figure:
+        self.display_promotion_message(piece)
+        promote_to = self.promote_to_queen()
+        if promote_to is None:
+            self.display_promotion_message(piece)
+            promote_to = self.promote_to_piece()
+        return promote_to
+    
+    def display_promotion_message(self, piece: Piece) -> None:
+        os.system("cls")
+        self.board.show_board()
+        print(f"-- Pawn reached backrank at {util.to_chess_notation(piece.pos)} --\n")
+    
+    def promote_to_queen(self) -> Piece.Figure | None:
+        while True:
+            print("Promote to Queen? (y/n) (No = choose another piece)")
+            answer = input().strip().lower()
+            if answer == "y":
+                return Piece.Figure.Queen
+            elif answer == "n":
+                return None
+            else:
+                print(f"Error! Your input {answer} is not valid. Please enter 'y' or 'n'")
+    
+    def promote_to_piece(self) -> Piece.Figure | None:
+        while True:
+            print("Promote to:\nq - Queen\nr - Rook\nb - Bishop\nn - Knight")
+            answer = input().strip().lower()
+            if answer in ["q", "n", "r", "b"]:
+                return answer
+            else:
+                print(f"Error! Your input {answer} is not valid.\n")
+    
+    def input_move(self, valid_moves: list[tuple]) -> str:
         print(f"-- {self.color}'s move --\n")
         print("select where to move")
         print("'x' to abort")
@@ -115,7 +178,7 @@ class Game:
                 continue
             return move_to
 
-    def select_piece(self) -> None:
+    def input_piece(self) -> None:
         print(f"-- {self.color}'s move --\n")
         print("select piece to move")
         while True:
