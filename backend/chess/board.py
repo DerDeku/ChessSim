@@ -11,15 +11,19 @@ class Board:
     def __init__(self):
         self.squares: list[list[Square]] = list()
         self.kings: list[Piece] = list()
-        self.pieces: dict[str, list[Piece]] = dict()
+        self.pieces: dict[str, list[Piece]] = None
         self.en_passant: tuple | None = None
+        self.castling_rights    = {util.PlayerColor.White: {util.CastlingRight.KingSide: True, util.CastlingRight.QueenSide: True},
+                                   util.PlayerColor.Black: {util.CastlingRight.KingSide: True, util.CastlingRight.QueenSide: True}
+                                   }
+        self.color_to_move = util.PlayerColor.White
+        self.turn = 0
+        
+    def end_turn(self) -> None:
+        self.color_to_move = util.PlayerColor.opponent(self.color_to_move)
     
     def get_copy(self) -> "Board":
-        copy = Board()
-        copy.squares = self.squares.copy()
-        copy.kings = self.kings.copy()
-        copy.pieces = deepcopy(self.pieces.copy())
-        return copy
+        return deepcopy(self)
         
     def as_fen(self) -> str:
         pass # TODO return board in FEN format: "rnbqkbnr/pppppppp/8/8/8/8/pppppppp/rnbqkbnr"
@@ -56,37 +60,106 @@ class Board:
         suffix = "\033[0m"
         
         return f" {prefix}{color}{line}{suffix} "
-    
-    def move_to(self, start_square_pos: str | tuple, target_square_pos: str | tuple, check_en_passant: bool = True) -> None | Piece:
-        start_square = self._get_square(start_square_pos)
+
+    def move_to(self, start_square: Square, target_square: Square) -> None:
         piece = start_square.remove_piece()
-        target_square = self._get_square(target_square_pos)
         taken_piece = target_square.place_piece(piece)
-        if check_en_passant:
-            self.handle_en_passant(piece, start_square, target_square)
-        return taken_piece
+        if taken_piece:
+            self.pieces[taken_piece.color].remove(taken_piece)
+        self.turn += 1
+
+    def handle_move(self, start_square_pos: str | tuple, target_square_pos: str | tuple, check_en_passant: bool = True) -> None | Piece:
+        self.handle_move_type(start_square_pos, target_square_pos)
+        
+    def handle_move_type(self, start_square_pos: str | tuple, target_square_pos: str | tuple):
+        start_square = self._get_square(start_square_pos)
+        target_square = self._get_square(target_square_pos)
+        piece = start_square.content
+        done = False
+        if piece.name == Piece.Figure.Pawn:
+            done = self.handle_en_passant(piece, start_square, target_square)
+        elif piece.name == Piece.Figure.King:
+            if self.is_castling(piece, target_square):
+                self.handle_castling(piece, target_square)
+                done = True
+            else:
+                self.castling_rights[piece.color][util.CastlingRight.KingSide]  = False
+                self.castling_rights[piece.color][util.CastlingRight.QueenSide] = False
+            
+        elif piece.name == Piece.Figure.Rook:
+            if util.rook_castling_start_position[util.CastlingRight.KingSide] == piece.pos[0]:
+                self.castling_rights[piece.color][util.CastlingRight.KingSide] = False
+            elif util.rook_castling_start_position[util.CastlingRight.QueenSide] == piece.pos[0]:
+                self.castling_rights[piece.color][util.CastlingRight.QueenSide] = False
+
+        if done:
+            return
+            
+        
+        self.move_to(start_square, target_square)
+    
+    def is_castling(self, piece: Piece, target_square: Square) -> bool:
+        color = piece.color
+        if not self.castling_rights[color][util.CastlingRight.KingSide] and self.castling_rights[color][util.CastlingRight.QueenSide]:
+            return False
+           
+        side = util.get_castling_side(target_square.pos())
+        if side is None:
+            return False
+        
+        return self.castling_rights[piece.color][side]
+    
+    def handle_castling(self, king: Piece, king_target_square: Square):
+        side = util.get_castling_side(king_target_square.pos())
+        rook_target_column  = util.rook_castling_end_position[side]
+        rook_start_column   = util.rook_castling_start_position[side]
+        rook_row            = util.color_home_rank[king.color]
+        
+        rook_origin_square = self._get_square((rook_start_column, rook_row))
+        rook_target_square = self._get_square((rook_target_column, rook_row))
+        king_origin_square = self._get_square(king.pos)
+        
+        rook    = rook_origin_square.remove_piece()
+        _       = king_origin_square.remove_piece()
+        rook_target_square.place_piece(rook)
+        king_target_square.place_piece(king)
+        
+        self.castling_rights[king.color][util.CastlingRight.KingSide] = False
+        self.castling_rights[king.color][util.CastlingRight.QueenSide] = False
+
+
         
     def handle_en_passant(self, piece: Piece, start_square: Square, target_square: Square) -> None:
         # move_to always calls this function currently, also when checking for check multiple times.
         # TODO: fix this
-        if piece.name != Piece.Figure.Pawn:
-            return
-        
-        pos_1 = start_square.pos()
-        pos_2 = target_square.pos()
-        if pos_2 == self.en_passant:
+        WHITE_PAWN = 3
+        COLUMN = 0
+        ROW = 1
+        FORWARD_BLACK = -1
+        FORWARD_WHITE = 1
+        start_pos = start_square.pos()
+        target_pos = target_square.pos()
+        if target_pos == self.en_passant:
             self.en_passant = None  
-            pos_2 = (pos_2[0],pos_2[1]-1) if pos_2[1] == 3 else (pos_2[0], pos_2[1]+1)
-            self.remove_piece_from_game(self.get_piece(pos_2))
-            
-        elif abs(pos_1[1] - pos_2[1]) > 1:
-            self.en_passant = (piece.pos[0], piece.pos[1]-1) if piece.color == Piece.Color.White else (piece.pos[0], piece.pos[1]+1)
+            target_pos = (target_pos[COLUMN],target_pos[ROW]+FORWARD_BLACK) if target_pos[ROW] == WHITE_PAWN else (target_pos[COLUMN], target_pos[ROW]+FORWARD_WHITE)
+            self.remove_piece_from_game(self.get_piece(target_pos))
+            return True    
+        elif abs(start_pos[ROW] - target_pos[ROW]) > 1:
+            self.en_passant = (piece.pos[COLUMN], piece.pos[COLUMN]+FORWARD_BLACK) if piece.color == Piece.Color.White else (piece.pos[COLUMN], piece.pos[ROW]+FORWARD_WHITE)
+            return False
         else:
             self.en_passant = None
+            return False
+            
     
     def remove_piece_from_game(self, piece: Piece) -> None:
         self.pieces[piece.color].remove(piece)
         self._get_square(piece.pos).remove_piece()
+    
+    def get_pieces(self, color: util.PlayerColor | None = None) -> list[Piece]:
+        if color is None:
+            color = self.color_to_move
+        return self.pieces[color]
     
     def get_piece(self, square: str | tuple) -> Piece:
         if isinstance(square, str):
@@ -133,7 +206,7 @@ class Board:
                 self.squares[y].append(square)        
                 
     def _create_pieces(self) -> list:
-        self.pieces: dict[str, list[Piece]] = dict()
+        self.pieces = dict()
         for color in [Piece.Color.White, Piece.Color.Black]:
             pieces_list = list()
             self.pieces.setdefault(color, pieces_list)

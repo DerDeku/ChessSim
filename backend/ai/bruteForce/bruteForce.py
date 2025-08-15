@@ -1,58 +1,55 @@
 from ..ai import Ai
+from ...positionEvaluator.posititionEvaluator import PositionEvaluator
 from ...chess import util
+from ...chess import Board
+
+
+
 class BruteForce(Ai):
-    def __init__(self, board) -> None:
+    def __init__(self, board, color: util.PlayerColor = util.PlayerColor.Black) -> None:
         super().__init__(board)
         self.best_variant = None
+        self.best_variant_value = 0
+        self.playing_as_color = color
+        self.variant_board = None
+        self.evaluator = PositionEvaluator()
+        self.current_depth = 0
+        self.max_depth = 2
 
     def set_depth(self, depth: int) -> None:
-        self.depth = depth
+        self.max_depth = depth
 
     def get_move(self) -> tuple[str]:
         """Returns tuple of two strings: tuple[0] start pos, tuple[1] target pos"""
-        move = self.calc_variants(list())
-        return move
+        self.moves = list()
+        self._calc(self.board.get_copy())
+        return self.best_variant
     
-    def evalue_variant(self, board) -> int:
-        pass
-    
-    def calc_variants(self, variants: list[dict]) -> list[dict]:
-        """Returns a variant """
-        original_board = self.board.get_copy()
-        depth = 0
-        is_enemy_turn = False
-        new_variant = True
-        while True:
-            color = "w" if is_enemy_turn else "b"
-            if len(variants) == depth:
-                variant = dict()
-                ghost_board = self.board.get_copy()
-                variant.setdefault(E_Variant.Board, ghost_board)
-                variant.setdefault(E_Variant.MoveIndex, [0,0])
-                variant.setdefault(E_Variant.PieceIndex, [0,0])
-                variant.setdefault(E_Variant.MoveNotation, ["",""])
-                variants.append(variant)
-            if new_variant:
-                variant = variants[depth]
-                self.moveCalculator.use_board(self.board)
+    def _calc(self, board: Board) -> list[dict]:
+        pieces = board.get_pieces(self.board.color_to_move)
+        self.moveCalculator.calc_all_valid_moves(pieces)
+        for piece in pieces:
+            possible_moves = self.moveCalculator.get_possible_moves(piece=piece)
+            for variant in possible_moves:
+                start_pos = piece.pos
+                board.handle_move(start_pos, variant)
+                    
+                if len(self.moves) == self.current_depth:
+                    self.moves.append((start_pos, variant))
+                else:
+                    self.moves[self.current_depth] = (start_pos, variant)
+                    
+                self.current_depth += 1
+                if self.current_depth < self.max_depth * 2:
+                    
+                    self._calc(board)
+                else:
+                    value = self._evalue_variant(board)
+                    if value > self.best_variant_value or self.best_variant is None:
+                        self.best_variant = self.moves[0]
                 
-                piece = self.board.pieces[color][variant[E_Variant.PieceIndex][is_enemy_turn]]
-                moves = self.moveCalculator._validMoves(piece=piece)
-                if not moves:
-                    variant[E_Variant.PieceIndex][is_enemy_turn] += 1
-                    continue
-                start_pos = util.to_chess_notation(piece.pos)
-                end_pos = util.to_chess_notation(moves[variant[E_Variant.MoveIndex][is_enemy_turn]])
-                variant[E_Variant.MoveNotation][is_enemy_turn] = (start_pos, end_pos)
-            self.board.move_to(*variant[E_Variant.MoveNotation][is_enemy_turn])
-            if is_enemy_turn:
-                depth += 1
-            if depth == self.depth: 
-                return variants
-            is_enemy_turn = not is_enemy_turn
-            
-class E_Variant:
-    Board           = "board"
-    MoveIndex       = "move_index"
-    MoveNotation    = "move_notation"
-    PieceIndex      = "piece_index"
+    def _evalue_variant(self, board) -> int:
+        value = self.evaluator.evaluate_current_position(board)
+        if self.playing_as_color == util.PlayerColor.Black:
+            value = -value
+        return value

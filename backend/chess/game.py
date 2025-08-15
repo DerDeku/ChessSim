@@ -1,11 +1,12 @@
 from datetime import datetime
 import os
+from enum import Enum
 
 from . import Board
 from . import Piece
 from . import util
+from . import BoardHistory
 from ..moveCalculation.moveCalculator import MoveCalculator
-from ..san import San
 from ..ai.bruteForce.bruteForce import BruteForce
 
 PVP = True
@@ -16,16 +17,15 @@ class Game:
         self.moves: list[str]   = list()
         self.board: Board       = Board()
         self.board.setup_board()
-        self.San: San           = San()
-        self.move_calculator    = MoveCalculator(self.board)
+        self.move_calculator    = MoveCalculator()
         self.ai                 = BruteForce(self.board)
         self.checkmate          = False
+        self.board_history      = BoardHistory(self.board)
         
     def setup_pgn_info(self) -> None:
         self.en_passant = "-"
         self.half_turns_since_event = 0 # pawn moved or piece taken
         self.turn = 1
-        self.color_to_move = util.PlayerColor.White
         self.castings_still_possible = "KQkq"
         self.date = datetime.now().isoformat()
         self.tournament = "None"
@@ -35,62 +35,55 @@ class Game:
         self.black_playername = "Auch Jo"
         self.result = "*" # 1-0 = white won, 0-1 = black won, 1/2-1/2 = remis, * inclomplete
     
-    @property
-    def color(self) -> str:
-        color = {"w" : "White", "b" : "Black"}
-        return color[self.color_to_move]
-    
-    def as_fen(self) -> str: # Forsyth-Edwards Notation
-        return f"{self.board.as_fen()} {self.color_to_move} {self.castings_still_possible} {self.en_passant} {self.half_turns_since_event} {self.turn}"
-
-    def as_pgn(self) -> dict: # Portable Game Notation
-        return {"Event" : self.tournament,
-                "Site"  : self.site, 
-                "Date"  : self.date,
-                "Round" : self.round,
-                "White" : self.white_playername,
-                "Black" : self.black_playername,
-                "Result": self.result,
-                "Moves" : self.moves}
+    def ai_turn(self) -> None:
+        move = self.ai.get_move()
+        self.board.handle_move(move[0], move[1])
+        self.board.end_turn()
+        return self.end_turn()
 
     def start(self) -> None:
         while True:
-            if not PVP and self.color_to_move == util.PlayerColor.Black:
-                if not self.ai_turn():
-                    return
-            if not self.play_turn():
+            if not PVP and self.ai.playing_as_color == self.board.color_to_move:
+                next_turn = self.ai_turn()
+                if not next_turn:
+                    break
+                
+            done = self.play_turn()
+            if not done: # Repeat turn
                 continue
-            if not self.end_turn():
-                return
+
+            next_turn = self.end_turn()
+            if not next_turn: # Game Over
+                break
         
-    def ai_turn(self) -> None:
-        move = self.ai.get_move()
-        self.board.move_to(move[0], move[1])
-        return self.end_turn()
-    
-    def play_turn(self) -> bool:
-        self.board.show_board()
-        self.board.en_passant = None
-        can_move = self.move_calculator.calc_all_valid_moves(self.board.pieces[self.color_to_move])
-        if not can_move and self.is_check():
-            self.checkmate = True
+    def debug_go_back(self, square_name: str) -> str:
+        if square_name == "X":
+            self.board = self.board_history.go_back()
             return True
-    
-        square_name = self.input_piece()
-        valid_moves = self.move_calculator.get_possible_moves(square_name)        
+        else:
+            return False
+        
+    def get_where_to_move_piece(self, square_name: str) -> str | None:
+        piece = self.board.get_piece(square_name)
+        valid_moves = self.move_calculator.get_possible_moves(piece)        
         self.board.show_board(valid_moves, square_name)
-        target_square_name = self.input_move(valid_moves)
+        return self.input_move(valid_moves)
+
+    def handle_moving_piece_to(self, square_name: str, target_square_name) -> tuple[Piece]:
+        taken_piece = self.board.handle_move(square_name, target_square_name)
+
+    def play_turn(self) -> bool:
+        """Return 'False' to repeat turn. Return 'True' to end turn"""
+        if self.lost_game():
+            return True
+        origin_square_name = self.input_piece()
+        if self.debug_go_back(origin_square_name):
+            return True
+        target_square_name = self.get_where_to_move_piece(origin_square_name)
         if target_square_name is None:
             return False
-        taken_piece = self.board.move_to(square_name, target_square_name)
-        piece = self.board.get_piece(target_square_name)
-        if piece.name == Piece.Figure.Pawn:
-            self.handle_pawn(piece)
-        # TODO: check/checkmate
-        self.board.show_board()
-        check_mate = False #self.is_checkmate()
-            
-        self.San.add(piece, square_name, target_square_name, self.board, taken_piece, check_mate=check_mate)
+        self.handle_moving_piece_to(origin_square_name, target_square_name)
+        self.board.end_turn()
         return True
     
     def handle_pawn(self, piece: Piece) -> None:
@@ -102,31 +95,24 @@ class Game:
         
     def handle_promotion(self, pawn: Piece) -> None:
         if self.board.can_pawn_promote(pawn):
-            self.board.show_board()
             pawn.promote_to(self.input_promotion(pawn))
     
     def is_check(self) -> bool:
-        if self.color_to_move is util.PlayerColor.White:
-            king = self.board.kings[1]
-        else:
-            king = self.board.kings[0]
-        return self.move_calculator.king_under_attack()
+        king = self.board.get_king_from_color(self.board.color_to_move)
+        return self.move_calculator.king_under_attack(king)
             
     def end_game(self) -> None:
-        self.result = util.PGN_win[self.color_to_move]
         self.board.show_board()
-        print(f"Checkmate - {util.full_color(self.color_to_move)} lost!")
+        self.result = util.PGN_win[self.board.color_to_move]
+        print(f"Checkmate - {util.full_color(self.board.color_to_move)} lost!")
     
     def end_turn(self) -> None:
         if self.checkmate:
             return False
             
-        elif self.color_to_move == util.PlayerColor.White:
-            self.color_to_move = util.PlayerColor.Black
+        self.board_history.add_turn(self.board)
         
-        else:
-            self.color_to_move = util.PlayerColor.White
-            self.moves.append(self.San.get_turn(self.turn))
+        if self.board.color_to_move == util.PlayerColor.White:
             self.turn += 1
         return True
 
@@ -162,8 +148,15 @@ class Game:
                 return answer
             else:
                 print(f"Error! Your input {answer} is not valid.\n")
+
+    def lost_game(self) -> bool:
+        can_move = self.move_calculator.calc_all_valid_moves(self.board)
+        if not can_move and self.is_check():
+            self.checkmate = True
+            return True
     
-    def input_move(self, valid_moves: list[tuple]) -> str:
+    def input_move(self, valid_moves: list[tuple]) -> str | None:
+        """Return selected square to move to or 'x' : abort"""
         print(f"-- {self.color}'s move --\n")
         print("select where to move")
         print("'x' to abort")
@@ -178,17 +171,20 @@ class Game:
                 continue
             return move_to
 
-    def input_piece(self) -> None:
+    def input_piece(self) -> str:
+        self.board.show_board()
         print(f"-- {self.color}'s move --\n")
         print("select piece to move")
         while True:
             square = input()
+            if square == "X":
+                return square
             if not self.is_good(square):
                 continue
             if not self.board.has_piece(square):
                 print(f"square {square} has no piece")
                 continue
-            if not self.board.get_piece(square).is_color(self.color_to_move):
+            if not self.board.get_piece(square).is_color(self.board.color_to_move):
                 print("Piece is not your color")
                 continue
             square = square[0].capitalize() + square[1]
@@ -210,3 +206,21 @@ class Game:
             print("Second character must be a number - " + str(e))
             return False
         return True
+
+    @property
+    def color(self) -> str:
+        color = {"w" : "White", "b" : "Black"}
+        return color[self.board.color_to_move]
+    
+    def as_fen(self) -> str: # Forsyth-Edwards Notation
+        return f"{self.board.as_fen()} {self.board.color_to_move} {self.castings_still_possible} {self.en_passant} {self.half_turns_since_event} {self.turn}"
+
+    def as_pgn(self) -> dict: # Portable Game Notation
+        return {"Event" : self.tournament,
+                "Site"  : self.site, 
+                "Date"  : self.date,
+                "Round" : self.round,
+                "White" : self.white_playername,
+                "Black" : self.black_playername,
+                "Result": self.result,
+                "Moves" : self.moves}

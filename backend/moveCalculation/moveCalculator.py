@@ -1,7 +1,7 @@
 from ..chess import Board
 from ..chess import Piece
 from ..chess import util
-
+from ..chess import BoardHistory
 class Dir:
     Up = 0
     Down = 1
@@ -19,45 +19,36 @@ class Diag:
 Knight_Moves = [(Dir.Up, Diag.UpRight),(Dir.Up, Diag.UpLeft),(Dir.Right, Diag.UpRight),(Dir.Right, Diag.DownRight),(Dir.Down, Diag.DownRight),(Dir.Down, Diag.DownLeft),(Dir.Left, Diag.UpLeft),(Dir.Left, Diag.DownLeft)]
 
 class MoveCalculator:
-    def __init__(self, board: Board):
-        self.color_to_move = None
+    def __init__(self):
         self.possible_moves: list[tuple[int]] = list()
-        self.board = board
         self.piece_function = {
-        Piece.Figure.Pawn : self._pawn,
-        Piece.Figure.Rook : self._rook,
+        Piece.Figure.Pawn   : self._pawn,
+        Piece.Figure.Rook   : self._rook,
         Piece.Figure.Bishop : self._bishop,
         Piece.Figure.Knight : self._knight,
-        Piece.Figure.King : self._king,
-        Piece.Figure.Queen : self._queen
+        Piece.Figure.King   : self._king,
+        Piece.Figure.Queen  : self._queen
         }
-        self.calculated_moves: dict[Piece, list[tuple[int]]] = dict()
-
-    def use_board(self, board: Board) -> None:
-        self.board = board
+        self._calculated_moves: dict[tuple[int], list[tuple[int]]] = dict()
     
-    def calc_all_valid_moves(self, pieces: list[Piece]) -> bool:
+    def calc_all_valid_moves(self, board: Board) -> bool:
         """Calculates all possible moves and stores them in a dict. Returns False if no possible moves are allowed"""
+        self.board = board
         move_possible = False
-        self.calculated_moves = dict()
+        pieces = board.get_pieces()
+        self._calculated_moves = dict()
         for piece in pieces:
-            if self._validMoves(piece=piece):
+            if self.piece_function[piece.name](piece):
                 move_possible = True
 
-            self.calculated_moves.setdefault(piece, self.possible_moves.copy())
+            self._calculated_moves.setdefault(piece.pos, self.possible_moves.copy())
+        self.board = None
         return move_possible
     
-    def get_possible_moves(self, square: str | None = None, piece: Piece | None = None) -> list[tuple[int]]:
-        if square and not piece:
-            piece = self.board.get_piece(square)
-        return self.calculated_moves[piece]
+    def get_possible_moves(self, piece: Piece) -> list[tuple[int]]:
+        """get possible moves from either the square or the piece"""
+        return self._calculated_moves[piece.pos]
     
-    def _validMoves(self, square: str | None = None, piece: Piece | None = None) -> list[tuple[int]]:
-        if square and not piece:
-            piece = self.board.get_piece(square)
-        self.color_to_move = piece.color
-        return self.piece_function[piece.name](piece)
-
     def _pawn(self, piece: Piece) -> None:
         self.possible_moves = list()
         forward = self._get_forward_for_piece(piece)
@@ -116,22 +107,37 @@ class MoveCalculator:
                 if self._are_hostile(piece, self.board.get_piece(new_pos)):
                     self.possible_moves.append(new_pos)
                 return
-            if self.king_under_attack(new_pos, piece):
+            if self.king_under_attack(piece, new_pos):
                 return
             self.possible_moves.append(new_pos)
+            if dir == Dir.Right or dir == Dir.Left:
+                self.check_castling(piece, dir, new_pos)
+            
+    def check_castling(self, piece: Piece, dir: int, pos: tuple[int]) -> None:
+        if not self.board.castling_rights[piece.color][util.CastlingRight.KingSide] and not self.board.castling_rights[piece.color][util.CastlingRight.QueenSide]:
+            return
+        new_pos = self._move(pos, dir)
+        if not new_pos[1] == util.color_home_rank[piece.color]:
+            return
+        
+        side = util.get_castling_side(new_pos)
+        if side is None or not self.board.castling_rights[piece.color][side]:
+            return
+        if self.king_under_attack_if_piece_goes(new_pos, piece):
+            return
+        self.possible_moves.append(new_pos)
+            
 
     def king_under_attack_if_piece_goes(self, new_pos: tuple, piece: Piece) -> bool:
         old_pos = piece.pos
-        old_piece = self.board.move_to(old_pos, new_pos, check_en_passant=False)
-        check = self.king_under_attack()
-        self.board.move_to(new_pos, old_pos, check_en_passant=False)
-        if old_piece:
-            self.board._get_square(new_pos).place_piece(old_piece)
+        board = self.board.get_copy()
+        board.handle_move(old_pos, new_pos, check_en_passant=False)
+        king = board.get_king_from_color(board.color_to_move)
+        check = self.king_under_attack(king)
         return check
             
-    def king_under_attack(self, pos: tuple | None = None, piece: Piece | None = None) -> bool:
-        if pos is None and piece is None:
-            piece = self.board.get_king_from_color(self.color_to_move)
+    def king_under_attack(self, piece: Piece, pos: tuple | None = None) -> bool:
+        if pos is None:
             pos = piece.pos
 
         if piece.name != Piece.Figure.King:
