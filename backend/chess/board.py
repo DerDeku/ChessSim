@@ -44,7 +44,7 @@ class Board:
             highlight_square = util.to_python_indecies(highlight_square_name)
         for y, y_line in enumerate(reversed(self.squares)):
             y = len(self.squares) - y
-            print_line = f"{y}    "
+            print_line = f"{y} {y-1}    "
             for x, square in enumerate(y_line):
                 if highlights and (x,y-1) in highlights:
                     print_line += self.color_line(square.content, "[31m") #red
@@ -53,7 +53,8 @@ class Board:
                 else:
                     print_line += f" {square.content} "
             print(print_line)
-        print("\n      A  B  C  D  E  F  G  H\n")
+        print("\n        0  1  2  3  4  5  6  7",end="")
+        print("\n        A  B  C  D  E  F  G  H\n")
         
     def color_line(self, line: str, color: str) -> str:
         prefix = "\033"
@@ -77,6 +78,7 @@ class Board:
         piece = start_square.content
         done = False
         if piece.name == Piece.Figure.Pawn:
+            self.handle_promotion(piece)
             done = self.handle_en_passant(piece, start_square, target_square)
         elif piece.name == Piece.Figure.King:
             if self.is_castling(piece, target_square):
@@ -95,8 +97,11 @@ class Board:
         if done:
             return
             
-        
         self.move_to(start_square, target_square)
+    
+    def handle_promotion(self, pawn: Piece) -> None:
+        if self.can_pawn_promote(pawn):
+            pawn.promote_to(self.input_promotion(pawn))
     
     def is_castling(self, piece: Piece, target_square: Square) -> bool:
         color = piece.color
@@ -126,8 +131,6 @@ class Board:
         
         self.castling_rights[king.color][util.CastlingRight.KingSide] = False
         self.castling_rights[king.color][util.CastlingRight.QueenSide] = False
-
-
         
     def handle_en_passant(self, piece: Piece, start_square: Square, target_square: Square) -> None:
         # move_to always calls this function currently, also when checking for check multiple times.
@@ -140,17 +143,18 @@ class Board:
         start_pos = start_square.pos()
         target_pos = target_square.pos()
         if target_pos == self.en_passant:
-            self.en_passant = None  
-            target_pos = (target_pos[COLUMN],target_pos[ROW]+FORWARD_BLACK) if target_pos[ROW] == WHITE_PAWN else (target_pos[COLUMN], target_pos[ROW]+FORWARD_WHITE)
+            self.move_to(start_square, target_square)
+            target_pos = (target_pos[COLUMN],target_pos[ROW]+FORWARD_WHITE) if target_pos[ROW] == WHITE_PAWN else (target_pos[COLUMN], target_pos[ROW]+FORWARD_BLACK)
             self.remove_piece_from_game(self.get_piece(target_pos))
+            
+            self.en_passant = None  
             return True    
         elif abs(start_pos[ROW] - target_pos[ROW]) > 1:
-            self.en_passant = (piece.pos[COLUMN], piece.pos[COLUMN]+FORWARD_BLACK) if piece.color == Piece.Color.White else (piece.pos[COLUMN], piece.pos[ROW]+FORWARD_WHITE)
+            self.en_passant = (piece.pos[COLUMN], piece.pos[ROW]+FORWARD_WHITE) if piece.color == Piece.Color.White else (piece.pos[COLUMN], piece.pos[ROW]+FORWARD_BLACK)
             return False
         else:
             self.en_passant = None
             return False
-            
     
     def remove_piece_from_game(self, piece: Piece) -> None:
         self.pieces[piece.color].remove(piece)

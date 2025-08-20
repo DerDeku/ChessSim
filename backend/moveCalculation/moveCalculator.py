@@ -33,16 +33,16 @@ class MoveCalculator:
     
     def calc_all_valid_moves(self, board: Board) -> bool:
         """Calculates all possible moves and stores them in a dict. Returns False if no possible moves are allowed"""
-        self.board = board
+        self.board = board.get_copy()
         move_possible = False
-        pieces = board.get_pieces()
+        pieces = self.board.get_pieces()
         self._calculated_moves = dict()
         for piece in pieces:
             if self.piece_function[piece.name](piece):
                 move_possible = True
 
             self._calculated_moves.setdefault(piece.pos, self.possible_moves.copy())
-        self.board = None
+        # self.board = None
         return move_possible
     
     def get_possible_moves(self, piece: Piece) -> list[tuple[int]]:
@@ -76,8 +76,10 @@ class MoveCalculator:
 
     def _knight(self, piece: Piece) -> None:
         self.possible_moves = list()
+        original_pos = piece.pos
         for knight_move in Knight_Moves:
             self._knight_move(piece, knight_move)
+            piece.set_pos(original_pos)
         return self.possible_moves
     
     def _king(self, piece: Piece) -> None:
@@ -96,44 +98,56 @@ class MoveCalculator:
             self._find_end(piece.pos, piece, diag)
         return self.possible_moves
     
-    def _king_move(self, piece: Piece, dir: int | tuple) -> None:
-            new_pos = self._move(piece.pos, dir)
-            enemy_king_pos = self.board.get_enemys_king_position(piece.color)
-            if not self._in_boundaries(new_pos):
-                return
-            if self.board.kings_to_close(new_pos, enemy_king_pos):
-                return
-            if self.board.has_piece(new_pos):
-                if self._are_hostile(piece, self.board.get_piece(new_pos)):
-                    self.possible_moves.append(new_pos)
-                return
-            if self.king_under_attack(piece, new_pos):
-                return
-            self.possible_moves.append(new_pos)
-            if dir == Dir.Right or dir == Dir.Left:
-                self.check_castling(piece, dir, new_pos)
+    def _king_move(self, piece: Piece, dir: int | tuple, check_castling: bool = True) -> bool:
+        new_pos = self._move(piece.pos, dir)
+        enemy_king_pos = self.board.get_enemys_king_position(piece.color)
+        if not self._in_boundaries(new_pos):
+            return False
+        if self.board.kings_to_close(new_pos, enemy_king_pos):
+            return False
+        if self.board.has_piece(new_pos):
+            if self._are_hostile(piece, self.board.get_piece(new_pos)):
+                self.possible_moves.append(new_pos)
+            return False
+        if self.king_under_attack(piece, new_pos):
+            return False
+        self.possible_moves.append(new_pos)
+        if check_castling and dir == Dir.Right or dir == Dir.Left:
+            return self.check_castling(piece, dir, new_pos)
+        return True
             
-    def check_castling(self, piece: Piece, dir: int, pos: tuple[int]) -> None:
+    def check_castling(self, piece: Piece, dir: int, pos: tuple[int]) -> bool:
         if not self.board.castling_rights[piece.color][util.CastlingRight.KingSide] and not self.board.castling_rights[piece.color][util.CastlingRight.QueenSide]:
-            return
+            return False
         new_pos = self._move(pos, dir)
+        original_pos = piece.pos
         if not new_pos[1] == util.color_home_rank[piece.color]:
-            return
+            return False
+        
+        
         
         side = util.get_castling_side(new_pos)
         if side is None or not self.board.castling_rights[piece.color][side]:
-            return
+            return False
         if self.king_under_attack_if_piece_goes(new_pos, piece):
-            return
+            return False
+        piece.set_pos(pos)
+        if not self._king_move(piece, dir, False):
+            piece.set_pos(original_pos)
+            return False
+        piece.set_pos(original_pos)
         self.possible_moves.append(new_pos)
+        return True
             
 
     def king_under_attack_if_piece_goes(self, new_pos: tuple, piece: Piece) -> bool:
         old_pos = piece.pos
         board = self.board.get_copy()
-        board.handle_move(old_pos, new_pos, check_en_passant=False)
-        king = board.get_king_from_color(board.color_to_move)
+        self.board.handle_move(old_pos, new_pos, check_en_passant=False)
+        king = self.board.get_king_from_color(self.board.color_to_move)
         check = self.king_under_attack(king)
+        self.board = board
+        piece.set_pos(old_pos)
         return check
             
     def king_under_attack(self, piece: Piece, pos: tuple | None = None) -> bool:

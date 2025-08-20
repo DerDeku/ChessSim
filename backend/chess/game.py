@@ -83,16 +83,13 @@ class Game:
         if target_square_name is None:
             return False
         self.handle_moving_piece_to(origin_square_name, target_square_name)
+        self.en_passant = self.board.en_passant if self.board.en_passant else "-"
+        piece = self.board.get_piece(target_square_name)
+        if piece.name == Piece.Figure.Pawn:
+            self.handle_promotion(piece)
         self.board.end_turn()
         return True
     
-    def handle_pawn(self, piece: Piece) -> None:
-        self.handle_en_passant()
-        self.handle_promotion(piece)
-        
-    def handle_en_passant(self) -> None:          
-        self.en_passant = util.to_chess_notation(self.board.en_passant) if self.board.en_passant else "-"
-        
     def handle_promotion(self, pawn: Piece) -> None:
         if self.board.can_pawn_promote(pawn):
             pawn.promote_to(self.input_promotion(pawn))
@@ -109,7 +106,8 @@ class Game:
     def end_turn(self) -> None:
         if self.checkmate:
             return False
-            
+        
+        # self.board.handle_promotion()
         self.board_history.add_turn(self.board)
         
         if self.board.color_to_move == util.PlayerColor.White:
